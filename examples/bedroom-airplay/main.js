@@ -16,8 +16,8 @@ try {
 } catch (error) { console.warn('AMLL background unavailable; using CSS fallback', error); }
 let previousArt;
 function render() {
-  $('title').textContent = state.title || 'Not Playing';
-  $('artist').textContent = state.artist || 'AirPlay to Bedroom';
+  $('title').textContent = state.title || 'Waiting for track details';
+  $('artist').textContent = state.artist || 'Bedroom · AirPlay';
   $('album').textContent = state.album;
   if (state.art !== previousArt) {
     previousArt = state.art;
