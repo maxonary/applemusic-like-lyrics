@@ -30,3 +30,17 @@ Legacy adapter.js tests remain as historical protocol tests, but it is no longer
 Deployment service: bedroom-amll; kiosk bedroom-display. Other shairport-display and
 bedroom-now-playing metadata services disabled to avoid competing FIFO readers.
 Source AGPL-3.0. Page links to this corresponding source directory.
+
+## Rotation and portrait mode
+
+Open /settings.html. Choose automatic, landscape or portrait composition, plus
+0/90/180/270-degree clockwise rotation. Quarter-turns swap logical canvas width
+and height, so automatic mode stacks artwork above metadata. Preview without saving
+uses ?preview=1&rotation=90&layout=auto on this browser only.
+Settings POST /settings persist atomically to /var/lib/bedroom-amll/display.json;
+all clients obtain them from /state within one polling interval. Requires that
+folder owned by pi and the service ReadWritePaths allowance. Default0/auto.
+Settings page remains upright for comfortable remote control. Use0 to restore.
+Rotation changes the rendered image only, not projector hardware/keystone/mounting.
+Verified all four geometry cases, explicit overrides, valid save/read/persistence,
+invalid rotation rejection, cross-origin rejection and90-degree browser preview.
