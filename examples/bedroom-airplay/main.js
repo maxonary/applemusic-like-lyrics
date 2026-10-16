@@ -1,60 +1,32 @@
 import { BackgroundRender, MeshGradientRenderer } from '@applemusic-like-lyrics/core';
 import '@applemusic-like-lyrics/core/style.css';
 import './style.css';
-import { initialState, reduce, position } from './adapter.js';
-const $ = id => document.getElementById(id);
-const params = new URLSearchParams(location.search);
-const base = new URL(import.meta.env.VITE_METADATA_URL || '/metadata/', location.href);
-let state = initialState();
-let background;
-try {
-  background = BackgroundRender.new(MeshGradientRenderer);
-  $('background').append(background.getElement());
-  background.setRenderScale(0.25);
-  background.setFPS(15);
-  background.setStaticMode(params.get('animated') !== '1');
-} catch (error) { console.warn('AMLL background unavailable; using CSS fallback', error); }
-let previousArt;
-function render() {
-  $('title').textContent = state.title || 'Waiting for track details';
-  $('artist').textContent = state.artist || 'Bedroom · AirPlay';
-  $('album').textContent = state.album;
-  if (state.art !== previousArt) {
-    previousArt = state.art;
-    $('art').hidden = !state.art;
-    $('placeholder').hidden = !!state.art;
-    if (state.art) {
-      $('art').src = state.art;
-      background?.setAlbum(state.art).catch(error => console.warn('Artwork background unavailable', error));
-    } else {
-      $('art').removeAttribute('src');
-      // Clear previous-track background when a session ends.
-      background?.getElement().style.setProperty('visibility', 'hidden');
-    }
-    if (state.art) background?.getElement().style.setProperty('visibility', 'visible');
+const $=id=>document.getElementById(id);let state={},received=0,lastArt=0,online=false,bg,loadGeneration=0;
+try{bg=BackgroundRender.new(MeshGradientRenderer);$('background').append(bg.getElement());bg.setRenderScale(.2);bg.setFPS(10);bg.setStaticMode(true)}catch(e){console.warn('Using static fallback background',e)}
+function format(t){t=Math.max(0,Math.floor(t));return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`}
+function render(){
+ const known=!!state.title,active=!!state.session;
+ document.body.classList.toggle('idle',!known);document.body.classList.toggle('playing',online&&!!state.playing);document.body.classList.toggle('offline',!online);
+ $('connection').textContent=online?'AirPlay receiver':'Reconnecting';
+ $('mode').textContent=known?'NOW PLAYING':active?'AIRPLAY CONNECTED':'READY WHEN YOU ARE';
+ $('title').textContent=known?state.title:active?'Music is playing':'Your music. Your room.';
+ $('artist').textContent=known?state.artist:active?'Waiting for track information':'Choose Bedroom in AirPlay';
+ $('album').textContent=known?state.album:'';
+ $('status').textContent=!online?'Display connection interrupted':active?(state.playing?'Playing on Katana':'Paused'):known?'Playback ended':'Ready for AirPlay';
+ const timing=known&&state.timing&&state.duration>0;
+ document.querySelector('.timeline').hidden=!timing;
+ let elapsed=Math.min(state.duration||0,(state.elapsed||0)+(state.playing&&online?(performance.now()-received)/1000:0));
+ $('progress').max=state.duration||1;$('progress').value=elapsed;$('elapsed').textContent=format(elapsed);$('remaining').textContent='−'+format((state.duration||0)-elapsed);
+}
+async function poll(){
+ try{
+  const r=await fetch('/state',{cache:'no-store',signal:AbortSignal.timeout(3500)});if(!r.ok)throw Error(r.status);state=await r.json();received=performance.now();online=true;
+  if(!state.art&&lastArt){lastArt=0;loadGeneration++;$('art').hidden=true;$('placeholder').hidden=false;bg?.getElement().style.setProperty('visibility','hidden')}
+  if(state.art&&state.art!==lastArt){
+   const revision=state.art,generation=++loadGeneration,url='/art?v='+revision,image=new Image();image.src=url;
+   image.onload=()=>{if(generation!==loadGeneration)return;lastArt=revision;$('art').src=url;$('art').hidden=false;$('placeholder').hidden=true;bg?.getElement().style.setProperty('visibility','visible');bg?.setAlbum(url).catch(()=>{})};
   }
-  const elapsed = position(state);
-  const format = seconds => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
-  $('progress').max = state.duration || 1;
-  $('progress').value = state.duration ? elapsed : 0;
-  $('elapsed').textContent = format(elapsed);
-  $('remaining').textContent = state.duration ? `−${format(Math.max(0, state.duration - elapsed))}` : '';
+ }catch(e){online=false}
+ render();setTimeout(poll,1000)
 }
-function connect() {
-  const url = new URL(base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(url);
-  ws.onopen = () => { $('status').textContent = ''; };
-  ws.onmessage = event => {
-    try { state = reduce(state, JSON.parse(event.data), base); render(); }
-    catch (error) { console.warn('Invalid metadata update', error); }
-  };
-  ws.onclose = () => {
-    state = { ...state, elapsed: position(state), playing: false, at: Date.now() };
-    $('status').textContent = 'Reconnecting…';
-    setTimeout(connect, 3000);
-  };
-  ws.onerror = () => ws.close();
-}
-connect();
-setInterval(render, 500);
-render();
+setInterval(render,500);render();poll();

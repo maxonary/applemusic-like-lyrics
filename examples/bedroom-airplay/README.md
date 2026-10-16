@@ -1,40 +1,32 @@
-# Bedroom AirPlay display prototype
+# Bedroom AMLL display
 
-Prepared independently of the live display. This is an AMLL-backed Now Playing frontend, not an exact Apple TV clone. Upstream targets iPad Apple Music and primarily supplies lyrics/background components. No Apple fonts, icons or assets are copied.
+Deployed on Raspberry Pi3, without moving the Pi4. Uses AMLL0.6 MeshGradientRenderer
+for a static album-derived background at 20% render scale. Expensive continuous mesh
+animation is disabled; only small CSS playback indicators animate.
 
-## Run on the Mac, consuming Bedroom's existing service
+Frontend: Vite build (`npm ci && npm run build`), deploy dist to the AMLL_ROOT path.
+Backend: Python3 standard library `server.py`, localhost3600, serves the built frontend
+and /state, /art, /diagnostics. Default AMLL_ROOT is the current Bedroom deployment
+/home/pi/shairport-metadata-display/public/amll. The directory name is historical;
+the second project's Node server is disabled. Gateway is the ONLY FIFO reader.
 
-```sh
-# Terminal 1: tunnel the metadata service (read-only consumer)
-ssh -N -L 3600:127.0.0.1:3600 pi@192.168.2.89
-# Terminal 2, from this directory
-npm ci
-npm run dev
-```
+Gateway reads /run/bedroom-now-playing/metadata, supporting legacy title/artwork/RTP
+messages plus Shairport5.6 ssnc/copl binary-plist updateMRNowPlayingInfo. Snapshots
+survive browser reconnects while the gateway stays running. No prior-track cache is
+persisted after a gateway restart, so the source must send fresh metadata.
+RTP progress currently assumes48kHz, matching Bedroom's observed AirPlay streams;
+plist timing is in seconds and does not use that assumption.
 
-Open http://127.0.0.1:5173. It receives the same metadata as the installed `shairport-metadata-display`; it does not open or consume the Shairport FIFO. The existing display keeps working. Alternative metadata host: `METADATA_TARGET=http://host:3600 npm run dev`.
+UI distinguishes idle, active without metadata, playing, paused, ended and reconnecting.
+No fake playback buttons or lyrics. Timeline hidden unless duration/progress exists.
+Long titles clamp to three lines. Artwork has entry transitions; stale art clears on
+replacement tracks without artwork. Reduced-motion preferences are respected.
 
-The Vite development proxy maps `/metadata/` and its WebSocket to the upstream server. Artwork stays same-origin, which WebGL requires. For a future production deployment, serve `dist/` with an equivalent reverse proxy for HTTP **and WebSocket** `/metadata/` to localhost:3600 (strip `/metadata`). Do not use `vite preview` as the production server; it lacks this proxy configuration. Do not expose the metadata service publicly.
+Validation: production build and gateway tests for binary-plist merge, pause, legacy
+titles, RTP progress, artwork and disconnect. Real AirPlay artwork/title/progress is
+still awaiting a fresh live track after deployment. No claim of exact Apple TV parity.
+Legacy adapter.js tests remain as historical protocol tests, but it is no longer used.
 
-## Pi 3 default
-
-AMLL `MeshGradientRenderer`, static mode on, quarter-resolution canvas. `?animated=1` enables optional 15 FPS animation for later profiling. Full lyric/mesh effects can be expensive: measure CPU, temperature, dropped AirPlay frames and Chromium memory on the Pi before deployment. CSS solid background remains if WebGL cannot initialize. No audio engine or device configuration changes.
-
-## Protocol
-
-Uses upstream WebSocket `{type, data}` events: `trackInfos` (title, artist, album, duration in ms), `position` (currPosition and duration in ms), `PICT` (relative artwork URL), `noPICT`, `pause`, `stop`, `noInfo`. Reconnects every three seconds. Progress is interpolated at two updates/second; pause/disconnect freezes progress. Metadata strings use textContent. Artwork restricted to the configured metadata server's `img/` path. No credentials involved.
-
-Reconnect snapshots may lack playback position/status until the next upstream update: the upstream server does not currently send a complete state snapshot on connection. Preserve this limitation until its protocol is improved.
-
-## Next stage
-
-- Compare a real projector screenshot with the exact desired Apple TV artwork view.
-- Profile static/animated rendering at 720p and 1080p on Bedroom before replacing its kiosk URL.
-- Add synchronized lyrics only with a legitimate separate lyric source; AirPlay metadata does not supply them.
-- Optionally replace the published 0.6.0 AMLL dependency with a locally built fork package when modifying core. The fork itself is unmodified upstream; this branch adds this integration example.
-
-## Validation
-
-`npm test`: metadata timings/pause, title formatting, artwork origin restrictions, stop reset. `npm run build`: production bundle. Hardware visual/performance checks are still pending; this branch is **not deployed**.
-
-AGPL-3.0: this example follows the repository license. The page links its corresponding source.
+Deployment service: bedroom-amll; kiosk bedroom-display. Other shairport-display and
+bedroom-now-playing metadata services disabled to avoid competing FIFO readers.
+Source AGPL-3.0. Page links to this corresponding source directory.
